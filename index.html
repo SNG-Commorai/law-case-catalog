@@ -1,0 +1,44 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>访问验证 · 案件清单</title><style>
+:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f4f7f6;color:#183035;font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;padding:24px}main{width:min(100%,420px);padding:36px;background:#fff;border:1px solid #dce5e4;border-radius:16px;box-shadow:0 12px 40px #18303508}.eyebrow{font-size:13px;color:#5c7276}h1{font-size:27px;line-height:1.4;margin:8px 0 12px}p{color:#5c7276;margin:0 0 24px}label{font-size:14px;font-weight:600}input,button{font:inherit;width:100%;height:48px;border-radius:8px}input{border:1px solid #b7cbc7;padding:0 12px;margin:7px 0 16px}button{border:0;background:#15665f;color:white;cursor:pointer}button:hover{background:#104e49}input:focus-visible,button:focus-visible{outline:3px solid #62aa9d;outline-offset:3px}.error{font-size:14px;color:#a43232;margin:0 0 16px}.note{font-size:12px;margin:20px 0 0}@media(max-width:480px){main{padding:26px}}
+</style><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-s3VoD0RelbBQZDMxCcFEphi9HXw4IZxjDaDoLPin0pM=' 'sha256-G78auT0aNchlPeTAJf2GUiSTMNXBTinj9+uS2RJ2NH0='; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'"></head><body><main><div class="eyebrow">律所资料归档</div><h1>请输入访问密码</h1><p>验证后可查看案件清单。</p><form id="unlock" action="./" method="get"><label for="password">访问密码</label><input id="password" type="password" autocomplete="current-password" required maxlength="200" autofocus><p id="error" class="error" role="alert" hidden></p><button id="submit" type="submit" disabled>查看案件清单</button></form><p class="note">仅展示案件清单，附件保存在本地。重新打开需再次输入密码。</p></main><noscript>请启用浏览器 JavaScript 后输入密码。</noscript><script>(() => {
+  const form = document.getElementById('unlock');
+  const input = document.getElementById('password');
+  const button = document.getElementById('submit');
+  const error = document.getElementById('error');
+  const decode = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+  if (!window.crypto?.subtle) {
+    error.textContent = '请通过 HTTPS 地址打开，或使用支持加密功能的新版浏览器。';
+    error.hidden = false;
+    return;
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    error.hidden = true;
+    button.disabled = true;
+    button.textContent = '正在验证…';
+    let password = input.value;
+    input.value = '';
+    try {
+      const response = await fetch('./catalog.enc.json', {cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer'});
+      if (!response.ok) throw new Error('network');
+      const payload = await response.json();
+      const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+      password = '';
+      const key = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: decode(payload.salt), iterations: payload.iterations, hash: 'SHA-256'}, material, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+      const plain = await crypto.subtle.decrypt({name: 'AES-GCM', iv: decode(payload.iv), tagLength: 128}, key, decode(payload.data));
+      const html = new TextDecoder('utf-8', {fatal: true}).decode(plain);
+      document.open();
+      document.write(html);
+      document.close();
+    } catch (failure) {
+      password = '';
+      error.textContent = failure?.message === 'network' ? '清单暂时无法加载，请稍后重试。' : '密码不正确，请重试。';
+      error.hidden = false;
+      button.disabled = false;
+      button.textContent = '查看案件清单';
+      input.focus();
+    }
+  });
+  button.disabled = false;
+})();
+</script></body></html>
